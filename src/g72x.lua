@@ -30,8 +30,7 @@
  * Common routines for G.721 and G.723 conversions.
 ]]
 
-local band, bxor, brshift, blshift = bit.band, bit.bxor, bit.brshift, bit.blshift
-local abs = math.abs
+local abs ,band, bxor, brshift, blshift = math.abs ,bit.band, bit.bxor, bit.rshift or bit.brshift, bit.lshift or bit.blshift
 
 local power2 = {1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000}
 
@@ -40,6 +39,9 @@ local power2 = {1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 
 --- It returns i if table[i - 1] <= val < table[i].
 ---
 --- Using linear search for simple coding.
+---@param val integer
+---@param table integer[]
+---@param size integer DEPRECATED: the size of the table
 local function quan(val, table, size)
     local i = 1
     while i <= #table do
@@ -52,42 +54,70 @@ end
 
 --- returns the integer product of the 14-bit integer "an" and
 --- "floating point" representation (4-bit exponent, 6-bit mantessa) "srn".
+---@param an integer
+---@param srn integer
+---@return integer
 local function fmult(an, srn)
-    local anmag = (an > 0) and an or band(-an, 0x1FFF)
+    local anmag = an > 0 and an or band(-an, 0x1FFF)
     local anexp = quan(anmag, power2, 15) - 6
-    local anmant = (anmag == 0) and 32 or ((anexp >= 0) and brshift(anmag, anexp) or blshift(anmag, -anexp))
+    local anmant = (anmag == 0) and 32 or (anexp >= 0 and brshift(anmag, anexp) or blshift(anmag, -anexp))
     local wanexp = anexp + band(brshift(srn, 6), 0xF) - 13
 
-    local wanmant = brshift((anmant * band(srn, 077) + 0x30), 4)
+    local wanmant = brshift(anmant * band(srn, 077) + 0x30, 4)
     local retval = (wanexp >= 0) and band(blshift(wanmant, wanexp), 0x7FFF) or brshift(wanmant, -wanexp)
 
     return bxor(an, srn) < 0 and -retval or retval
 end
 
+--- The following is the definition of the state structure
+--- used by the G.721/G.723 encoder and decoder to preserve their internal
+--- state between successive calls.  The meanings of the majority
+--- of the state structure fields are explained in detail in the
+--- CCITT Recommendation G.721.  The field names are essentially identical
+--- to variable names in the bit level description of the coding algorithm
+--- included in this Recommendation.
+---@class g72x_state
+---@field yl integer Locked or steady state step size multiplier. 
+---@field yu integer Unlocked or non-steady state step size multiplier. 
+---@field dms integer Short term energy estimate. 
+---@field dml integer Long term energy estimate. 
+---@field ap integer Linear weighting coefficient of 'yl' and 'yu'. 
+---@field a integer[] Coefficients of pole portion of prediction filter. Is 2 elements long
+---@field b integer[] Coefficients of zero portion of prediction filter. Is 6 elements long
+---@field pk integer[] Signs of previous two samples of a partially reconstructed signal. Is 2 elements long
+---@field dq integer[] Previous 6 samples of the quantized difference signal represented in an internal floating point format. Is 6 elements long
+---@field sr integer[] Previous 2 samples of the quantized difference signal represented in an internal floating point format. Is 2 elements long
+---@field td integer delayed tone detect, new in 1988 version 
+
 
 --- This routine initializes and/or resets the g72x_state structure
 --- pointed to by 'state'.
 --- All the initial state values are specified in the CCITT G.721 document.
-
+---@param state g72x_state
 function g72x_init_state(state)
     state.yl = 34816
     state.yu = 544
     state.dms = 0
     state.dml = 0
     state.ap = 0
-    for cnta = 1, 2 do
-        state.a[cnta] = 0
-        state.pk[cnta] = 0
-        state.sr[cnta] = 32
-    end
-    for cnta = 1, 6 do
-        state.b[cnta] = 0
-        state.dq[cnta] = 32
-    end
+    state.a = {0, 0}
+    state.pk = {0, 0}
+    state.sr = {0, 0}
+    state.b = {0, 0, 0, 0, 0, 0}
+    state.dq = {0, 0, 0, 0, 0, 0}
     state.td = 0
 end
 
+--- This routine creates a new `g72x_state` from a table
+--- @return g72x_state
+function g72x_new_state()
+    local state = {}
+    g72x_init_state(state)
+    return state
+end
+
 --- computes the estimated signal from 6-zero predictor.
+---@param state g72x_state
 function predictor_zero(state)
     local sezi = fmult(brshift(state.b[1+0], 2), state.dq[1+0] )
     for i=2,6 do -- ACCUM 
@@ -97,13 +127,14 @@ function predictor_zero(state)
 end
 
 --- computes the estimated signal from 2-pole predictor.
+---@param state g72x_state
 function predictor_pole(state)
     return fmult(brshift(state.a[1+1], 2), state.sr[1+1] ) +
             fmult(brshift(state.a[1+0], 2), state.sr[1+0] )
 end
 
 --- computes the quantization step size of the adaptive quantizer.
-
+---@param state g72x_state
 function step_size(state)
     if state.ap >= 256 then
         return state.yu
@@ -125,10 +156,11 @@ end
 --- ADPCM codeword to which that sample gets quantized.  The step
 --- size scale factor division operation is done in the log base 2 domain
 --- as a subtraction.
-function quantize(d,        -- Raw difference signal sample 
-             y,        -- Step size multiplier 
-             table, -- quantization table 
-             size)     -- table size of short integers 
+---@param d integer Raw difference signal sample
+---@param y integer Step size multiplier
+---@param table integer[] quantization table
+---@param size integer DEPRECATED: table size of short integers
+function quantize(d, y, table, size)
     local dqm  -- Magnitude of 'd' 
     local exp  -- Integer part of base 2 log of 'd' 
     local mant -- Fractional part of base 2 log 
@@ -170,9 +202,10 @@ end
 --- Returns reconstructed difference signal 'dq' obtained from
 --- codeword 'i' and quantization step size scale factor 'y'.
 --- Multiplication is performed in log base 2 domain as addition.
-function reconstruct(sign, -- 0 for non-negative value 
-                dqln, -- G.72x codeword 
-                y)    -- Step size multiplier 
+---@param sign integer 0 for non-negative value 
+---@param dqln integer G.72x codeword
+---@param y integer Step size multiplier 
+function reconstruct(sign, dqln, y)
     local dql -- Log of 'dq' magnitude 
     local dex -- Integer part of log 
     local dqt
@@ -191,15 +224,15 @@ function reconstruct(sign, -- 0 for non-negative value
 end
 
 --- updates the state variables for each output code
-function update(code_size,                -- distinguish 723_40 with others 
-            y,                        -- quantizer step size 
-            wi,                       -- scale factor multiplier 
-            fi,                       -- for long/short term energies 
-            dq,                       -- quantized prediction difference 
-            sr,                       -- reconstructed signal 
-            dqsez,                    -- difference from 2-pole predictor 
-            state) -- coder state pointer 
-    local cnt
+---@param code_size integer distinguish 723_40 with others
+---@param y integer quantizer step size
+---@param wi integer scale factor multiplier
+---@param fi integer for long/short term energies
+---@param dq integer quantized prediction difference
+---@param sr integer reconstructed signal
+---@param dqsez integer difference from 2-pole predictor
+---@param state g72x_state coder state pointer
+function update(code_size, y, wi, fi, dq, sr, dqsez, state)
     local mag, exp -- Adaptive predictor, FLOAT A 
     local a2p = 0  -- LIMC 
     local a1ul     -- UPA1 
@@ -233,7 +266,7 @@ function update(code_size,                -- distinguish 723_40 with others
 
     -- FUNCTW & FILTD & DELAY 
     -- update non-steady state step size multiplier 
-    state.yu = y + brshift((wi - y), 5)
+    state.yu = y + brshift(wi - y, 5)
 
     -- LIMB 
     if state.yu < 544 then -- 544 <= yu <= 5120 
@@ -363,17 +396,17 @@ function update(code_size,                -- distinguish 723_40 with others
     end
 
     -- Adaptation speed control.
-    state.dms = state.dms + brshift((fi - state.dms), 5)          -- FILTA 
-    state.dml = state.dml + brshift(((brshift(fi, 2)) - state.dml), 7) -- FILTB 
+    state.dms = state.dms + brshift(fi - state.dms, 5)          -- FILTA 
+    state.dml = state.dml + brshift(brshift(fi, 2) - state.dml, 7) -- FILTB 
 
     if tr == 1 then
         state.ap = 256
     elseif y < 1536 then -- SUBTC 
-        state.ap = state.ap + brshift((0x200 - state.ap), 4)
+        state.ap = state.ap + brshift(0x200 - state.ap, 4)
     elseif state.td == 1 then
-        state.ap = state.ap + brshift((0x200 - state.ap), 4)
+        state.ap = state.ap + brshift(0x200 - state.ap, 4)
     elseif abs(brshift(state.dms, 2) - state.dml) >= brshift(state.dml, 3) then
-        state.ap = state.ap + brshift((0x200 - state.ap), 4)
+        state.ap = state.ap + brshift(0x200 - state.ap, 4)
     else
         state.ap = state.ap + brshift(-state.ap, 4)
     end
@@ -386,29 +419,20 @@ end
 --- the output of this decoder as a tandem process. If the output of the
 --- simulated encoder differs from the input to this decoder, the decoder output
 --- is adjusted by one level of A-law or u-law codes.
----
---- Input:
----	sr	decoder output linear PCM sample,
----	se	predictor estimate sample,
----	y	quantizer step size,
----	i	decoder input code,
----	sign	sign bit of code i
----
---- Return:
----	adjusted A-law or u-law compressed sample.
-
-function tandem_adjust_alaw(sr, -- decoder output linear PCM sample 
-                            se, -- predictor estimate sample 
-                            y,  -- quantizer step size 
-                            i,  -- decoder input code 
-                            sign,
-                            qtab)
+---@param sr integer decoder output linear PCM sample
+---@param se integer predictor estimate sample
+---@param y integer quantizer step size
+---@param i integer decoder input code 
+---@param sign integer sign bit of code i
+---@param qtab integer[]
+---@return integer sp adjusted A-law or u-law compressed sample
+function tandem_adjust_alaw(sr, se, y, i, sign, qtab)
     local sp -- A-law compressed 8-bit code 
-    local dx         -- prediction error 
-    local id          -- quantized prediction error 
-    local sd           -- adjusted A-law decoded sample value 
-    local im           -- biased magnitude of i 
-    local imx          -- biased magnitude of id 
+    local dx -- prediction error 
+    local id -- quantized prediction error 
+    local sd -- adjusted A-law decoded sample value 
+    local im -- biased magnitude of i 
+    local imx -- biased magnitude of id 
 
     if sr <= -32768 then
         sr = -1
@@ -441,6 +465,12 @@ function tandem_adjust_alaw(sr, -- decoder output linear PCM sample
     end
 end
 
+---@param sr integer
+---@param se integer
+---@param y integer
+---@param i integer
+---@param sign integer
+---@param qtab integer[]
 function tandem_adjust_ulaw(sr, -- decoder output linear PCM sample 
                        se, -- predictor estimate sample 
                        y,  -- quantizer step size 
