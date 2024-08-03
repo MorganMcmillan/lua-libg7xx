@@ -1,4 +1,4 @@
-/*
+--[[
  * This source code is a product of Sun Microsystems, Inc. and is provided
  * for unrestricted use.  Users may copy or modify this source code without
  * charge.
@@ -28,17 +28,18 @@
  * g711.c
  *
  * u-law, A-law and linear PCM conversions.
- */
-#define SIGN_BIT (0x80)  /* Sign bit for a A-law byte. */
-#define QUANT_MASK (0xf) /* Quantization field mask. */
-#define NSEGS (8)        /* Number of A-law segments. */
-#define SEG_SHIFT (4)    /* Left shift for segment number. */
-#define SEG_MASK (0x70)  /* Segment field mask. */
+]]
+local SIGN_BIT = 0x80  -- Sign bit for a A-law byte. 
+local QUANT_MASK = 0xf        -- Number of A-law segments. 
+local SEG_SHIFT = 4    -- Left shift for segment number. 
+local SEG_MASK = 0x70  -- Segment field mask. 
 
-static short seg_end[8] = { 0xFF, 0x1FF, 0x3FF, 0x7FF, 0xFFF, 0x1FFF, 0x3FFF, 0x7FFF };
+local seg_end = { 0xFF, 0x1FF, 0x3FF, 0x7FF, 0xFFF, 0x1FFF, 0x3FFF, 0x7FFF };
 
-/* copy from CCITT G.711 specifications */
-unsigned char _u2a[128] = { /* u- to A-law conversions */
+-- copy from CCITT G.711 specifications
+
+-- u- to A-law conversions
+local _u2a = { 
                             1,   1,   2,   2,   3,   3,   4,   4,   5,   5,   6,   6,
                             7,   7,   8,   8,   9,   10,  11,  12,  13,  14,  15,  16,
                             17,  18,  19,  20,  21,  22,  23,  24,  25,  27,  29,  31,
@@ -50,9 +51,9 @@ unsigned char _u2a[128] = { /* u- to A-law conversions */
                             97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107, 108,
                             109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120,
                             121, 122, 123, 124, 125, 126, 127, 128
-};
-
-unsigned char _a2u[128] = { /* A- to u-law conversions */
+}
+-- A- to u-law conversions
+local _a2u = { 
                             1,   3,   5,   7,   9,   11,  13,  15,  16,  17,  18,  19,
                             20,  21,  22,  23,  24,  25,  26,  27,  28,  29,  30,  31,
                             32,  32,  33,  33,  34,  34,  35,  35,  36,  37,  38,  39,
@@ -64,7 +65,7 @@ unsigned char _a2u[128] = { /* A- to u-law conversions */
                             96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107,
                             108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119,
                             120, 121, 122, 123, 124, 125, 126, 127
-};
+}
 
 static int search(int val, short* table, int size)
 {
@@ -96,25 +97,25 @@ static int search(int val, short* table, int size)
  * For further information see John C. Bellamy's Digital Telephony, 1982,
  * John Wiley & Sons, pps 98-111 and 472-476.
  */
-unsigned char linear2alaw(int pcm_val) /* 2's complement (16-bit range) */
+unsigned char linear2alaw(int pcm_val) -- 2's complement (16-bit range) 
 {
     int mask;
     int seg;
     unsigned char aval;
 
     if (pcm_val >= 0) {
-        mask = 0xD5; /* sign (7th) bit = 1 */
+        mask = 0xD5; -- sign (7th) bit = 1 
     } else {
-        mask = 0x55; /* sign bit = 0 */
+        mask = 0x55; -- sign bit = 0 
         pcm_val = -pcm_val - 8;
     }
 
-    /* Convert the scaled magnitude to segment number. */
+    -- Convert the scaled magnitude to segment number. 
     seg = search(pcm_val, seg_end, 8);
 
-    /* Combine the sign, segment, and quantization bits. */
+    -- Combine the sign, segment, and quantization bits. 
 
-    if (seg >= 8) /* out of range, return maximum value. */
+    if (seg >= 8) -- out of range, return maximum value. 
         return (0x7F ^ mask);
     else {
         aval = seg << SEG_SHIFT;
@@ -153,7 +154,7 @@ int alaw2linear(unsigned char a_val)
     return ((a_val & SIGN_BIT) ? t : -t);
 }
 
-#define BIAS (0x84) /* Bias for linear code. */
+local BIAS = 0x84 -- Bias for linear code. 
 
 /*
  * linear2ulaw() - Convert a linear PCM value to u-law
@@ -214,30 +215,27 @@ unsigned char linear2ulaw(int pcm_val) /* 2's complement (16-bit range) */
     }
 }
 
-/*
- * ulaw2linear() - Convert a u-law value to 16-bit linear PCM
- *
- * First, a biased linear code is derived from the code word. An unbiased
- * output can then be obtained by subtracting 33 from the biased code.
- *
- * Note that this function expects to be passed the complement of the
- * original code word. This is in keeping with ISDN conventions.
- */
+
+--- ulaw2linear() - Convert a u-law value to 16-bit linear PCM
+---
+--- First, a biased linear code is derived from the code word. An unbiased
+--- output can then be obtained by subtracting 33 from the biased code.
+---
+--- Note that this function expects to be passed the complement of the
+--- original code word. This is in keeping with ISDN conventions.
 int ulaw2linear(unsigned char u_val)
 {
     int t;
 
-    /* Complement to obtain normal u-law value. */
+    --- Complement to obtain normal u-law value.
     u_val = ~u_val;
 
-    /*
-     * Extract and bias the quantization bits. Then
-     * shift up by the segment number and subtract out the bias.
-     */
+    --- Extract and bias the quantization bits. Then
+    --- shift up by the segment number and subtract out the bias.
     t = ((u_val & QUANT_MASK) << 3) + BIAS;
     t <<= ((unsigned)u_val & SEG_MASK) >> SEG_SHIFT;
 
-    return ((u_val & SIGN_BIT) ? (BIAS - t) : (t - BIAS));
+    return ((u_val & SIGN_BIT) ~= 0 and (BIAS - t) or (t - BIAS));
 }
 
 /* A-law to u-law conversion */

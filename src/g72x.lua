@@ -30,7 +30,7 @@
  * Common routines for G.721 and G.723 conversions.
 ]]
 
-local abs ,band, bxor, brshift, blshift = math.abs ,bit.band, bit.bxor, bit.rshift or bit.brshift, bit.lshift or bit.blshift
+local abs ,band, bxor, brshift, blshift = math.abs ,bit.band, bit.bxor, bit.brshift or bit.rshift, bit.blshift or bit.lshift
 
 local power2 = {1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000}
 
