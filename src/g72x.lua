@@ -50,7 +50,6 @@ local function quan(val, table, size)
     return size + 1
 end
 
-
 --- returns the integer product of the 14-bit integer "an" and
 --- "floating point" representation (4-bit exponent, 6-bit mantessa) "srn".
 ---@param an integer
@@ -76,24 +75,23 @@ end
 --- to variable names in the bit level description of the coding algorithm
 --- included in this Recommendation.
 ---@class g72x_state
----@field yl integer Locked or steady state step size multiplier. 
----@field yu integer Unlocked or non-steady state step size multiplier. 
----@field dms integer Short term energy estimate. 
----@field dml integer Long term energy estimate. 
----@field ap integer Linear weighting coefficient of 'yl' and 'yu'. 
+---@field yl integer Locked or steady state step size multiplier.
+---@field yu integer Unlocked or non-steady state step size multiplier.
+---@field dms integer Short term energy estimate.
+---@field dml integer Long term energy estimate.
+---@field ap integer Linear weighting coefficient of 'yl' and 'yu'.
 ---@field a integer[] Coefficients of pole portion of prediction filter. Is 2 elements long
 ---@field b integer[] Coefficients of zero portion of prediction filter. Is 6 elements long
 ---@field pk integer[] Signs of previous two samples of a partially reconstructed signal. Is 2 elements long
 ---@field dq integer[] Previous 6 samples of the quantized difference signal represented in an internal floating point format. Is 6 elements long
 ---@field sr integer[] Previous 2 samples of the quantized difference signal represented in an internal floating point format. Is 2 elements long
----@field td integer delayed tone detect, new in 1988 version 
-
+---@field td integer delayed tone detect, new in 1988 version
 
 --- This routine initializes and/or resets the g72x_state structure
 --- pointed to by 'state'.
 --- All the initial state values are specified in the CCITT G.721 document.
 ---@param state g72x_state
-function g72x.init_state(state)
+local function g72x_init_state(state)
     state.yl = 34816
     state.yu = 544
     state.dms = 0
@@ -107,6 +105,8 @@ function g72x.init_state(state)
     state.td = 0
 end
 
+g72x.init_state = g72x_init_state
+
 --- This routine creates a new `g72x_state` from a table
 --- @return g72x_state
 function g72x.new_state()
@@ -118,8 +118,8 @@ end
 --- computes the estimated signal from 6-zero predictor.
 ---@param state g72x_state
 function g72x.predictor_zero(state)
-    local sezi = fmult(brshift(state.b[1+0], 2), state.dq[1+0] )
-    for i=2,6 do -- ACCUM 
+    local sezi = fmult(brshift(state.b[1], 2), state.dq[1] )
+    for i=2,6 do -- ACCUM
         sezi = sezi + fmult(brshift(state.b[i], 2), state.dq[i])
     end
     return sezi
@@ -128,8 +128,8 @@ end
 --- computes the estimated signal from 2-pole predictor.
 ---@param state g72x_state
 function g72x.predictor_pole(state)
-    return fmult(brshift(state.a[1+1], 2), state.sr[1+1] ) +
-            fmult(brshift(state.a[1+0], 2), state.sr[1+0] )
+    return fmult(brshift(state.a[2], 2), state.sr[2] ) +
+            fmult(brshift(state.a[1], 2), state.sr[1] )
 end
 
 --- computes the quantization step size of the adaptive quantizer.
@@ -159,14 +159,13 @@ end
 ---@param y integer Step size multiplier
 ---@param table integer[] quantization table
 ---@param size integer DEPRECATED: table size of short integers
-function g72x.quantize(d, y, table, size)
-    local dqm  -- Magnitude of 'd' 
-    local exp  -- Integer part of base 2 log of 'd' 
-    local mant -- Fractional part of base 2 log 
-    local dl   -- Log of magnitude of 'd' 
-    local dln  -- Step size scale factor normalized log 
+local function quantize(d, y, table, size)
+    local dqm  -- Magnitude of 'd'
+    local exp  -- Integer part of base 2 log of 'd'
+    local mant -- Fractional part of base 2 log
+    local dl   -- Log of magnitude of 'd'
+    local dln  -- Step size scale factor normalized log
     local i
-
 
     -- LOG
     --
@@ -174,47 +173,47 @@ function g72x.quantize(d, y, table, size)
 
     dqm = abs(d)
     exp = quan(brshift(dqm, 1), power2, 15)
-    mant = band(brshift(brshift(dqm, 7), exp), 0x7F) -- Fractional portion. 
+    mant = band(brshift(brshift(dqm, 7), exp), 0x7F) -- Fractional portion.
     dl = brshift(exp, 7) + mant
 
-    
     -- SUBTB
     --
     -- "Divide" by step size multiplier.
     dln = dl - brshift(y, 2)
 
-    
     -- QUAN
     --
     -- Obtain codword i for 'd'.
 
     i = quan(dln, table, size)
-    if d < 0 then -- take 1's complement of i 
+    if d < 0 then -- take 1's complement of i
         return brshift(size, 1) + 1 - i
-    elseif i == 0 then              -- take 1's complement of 0 
-        return brshift(size, 1) + 1 -- new in 1988 
+    elseif i == 0 then              -- take 1's complement of 0
+        return brshift(size, 1) + 1 -- new in 1988
     else
         return i
     end
 end
 
+g72x.quantize = quantize
+
 --- Returns reconstructed difference signal 'dq' obtained from
 --- codeword 'i' and quantization step size scale factor 'y'.
 --- Multiplication is performed in log base 2 domain as addition.
----@param sign integer 0 for non-negative value 
+---@param sign integer 0 for non-negative value
 ---@param dqln integer G.72x codeword
----@param y integer Step size multiplier 
+---@param y integer Step size multiplier
 function g72x.reconstruct(sign, dqln, y)
-    local dql -- Log of 'dq' magnitude 
-    local dex -- Integer part of log 
+    local dql -- Log of 'dq' magnitude
+    local dex -- Integer part of log
     local dqt
-    local dq -- Reconstructed difference signal sample 
+    local dq -- Reconstructed difference signal sample
 
-    dql = dqln + brshift(y, 2) -- ADDA 
+    dql = dqln + brshift(y, 2) -- ADDA
 
     if dql < 0 then
         return sign and -0x8000 or 0
-    else -- ANTILOG 
+    else -- ANTILOG
         dex = band(brshift(dql, 7), 15)
         dqt = 128 + band(dql, 127)
         dq = brshift(brshift(dqt, 7), 14 - dex)
@@ -232,65 +231,62 @@ end
 ---@param dqsez integer difference from 2-pole predictor
 ---@param state g72x_state coder state pointer
 function g72x.update(code_size, y, wi, fi, dq, sr, dqsez, state)
-    local mag, exp -- Adaptive predictor, FLOAT A 
-    local a2p = 0  -- LIMC 
-    local a1ul     -- UPA1 
-    local pks1     -- UPA2 
+    local mag, exp -- Adaptive predictor, FLOAT A
+    local a2p = 0  -- LIMC
+    local a1ul     -- UPA1
+    local pks1     -- UPA2
     local fa1
-    local tr -- tone/transition detector 
+    local tr -- tone/transition detector
     local ylint, thr2, dqthr
     local ylfrac, thr1
     local pk0
 
-    pk0 = (dqsez < 0) and 1 or 0 -- needed in updating predictor poles 
+    pk0 = (dqsez < 0) and 1 or 0 -- needed in updating predictor poles
 
-    mag = band(dq, 0x7FFF) -- prediction difference magnitude 
-    -- TRANS 
-    ylint = brshift(state.yl, 15)           -- exponent part of yl 
-    ylfrac = band(brshift(state.yl, 10), 0x1F) -- fractional part of yl 
-    thr1 = blshift(32 + ylfrac, ylint)         -- threshold 
-    thr2 = (ylint > 9) and brshift(31, 10) or thr1  -- limit thr2 to 31 << 10 
-    dqthr = brshift(thr2 + brshift(thr2, 1), 1)     -- dqthr = 0.75 * thr2 
-    if state.td == 0 then                -- signal supposed voice 
+    mag = band(dq, 0x7FFF) -- prediction difference magnitude
+    -- TRANS
+    ylint = brshift(state.yl, 15)           -- exponent part of yl
+    ylfrac = band(brshift(state.yl, 10), 0x1F) -- fractional part of yl
+    thr1 = blshift(32 + ylfrac, ylint)         -- threshold
+    thr2 = (ylint > 9) and brshift(31, 10) or thr1  -- limit thr2 to 31 << 10
+    dqthr = brshift(thr2 + brshift(thr2, 1), 1)     -- dqthr = 0.75 * thr2
+    if state.td == 0 then                -- signal supposed voice
         tr = 0
-    elseif mag <= dqthr then -- supposed data, but small mag 
-        tr = 0            -- treated as voice 
-    else                   -- signal is data (modem) 
+    elseif mag <= dqthr then -- supposed data, but small mag
+        tr = 0            -- treated as voice
+    else                   -- signal is data (modem)
         tr = 1
     end
 
-    
     -- Quantizer scale factor adaptation.
-     
 
-    -- FUNCTW & FILTD & DELAY 
-    -- update non-steady state step size multiplier 
+    -- FUNCTW & FILTD & DELAY
+    -- update non-steady state step size multiplier
     state.yu = y + brshift(wi - y, 5)
 
-    -- LIMB 
-    if state.yu < 544 then -- 544 <= yu <= 5120 
+    -- LIMB
+    if state.yu < 544 then -- 544 <= yu <= 5120
         state.yu = 544
     elseif state.yu > 5120 then
         state.yu = 5120
     end
-    -- FILTE & DELAY 
-    -- update steady state step size multiplier 
+    -- FILTE & DELAY
+    -- update steady state step size multiplier
     state.yl = state.yl + state.yu + brshift(-state.yl, 6)
 
-    
     -- Adaptive predictor coefficients.
 
-    if tr == 1 then -- reset a's and b's for modem signal 
+    if tr == 1 then -- reset a's and b's for modem signal
         for i=1,2 do state.a[i] = 0 end
         for i=1,6 do state.b[i] = 0 end
-    else                             -- update a's and b's 
-        pks1 = bxor(pk0, state.pk[1+0])  -- UPA2 
+    else                             -- update a's and b's
+        pks1 = bxor(pk0, state.pk[1])  -- UPA2
 
-        -- update predictor pole a[1+1]  
-        a2p = state.a[1+1]  - brshift(state.a[1+1], 7)
+        -- update predictor pole a[2]
+        a2p = state.a[2]  - brshift(state.a[2], 7)
         if dqsez ~= 0 then
-            fa1 = (pks1) and state.a[1+0]  or -state.a[1+0] 
-            if fa1 < -8191 then -- a2p = function of fa1 
+            fa1 = (pks1) and state.a[1]  or -state.a[1]
+            if fa1 < -8191 then -- a2p = function of fa1
                 a2p = a2p - 0x100
             elseif fa1 > 8191 then
                 a2p = a2p + 0xFF
@@ -298,8 +294,8 @@ function g72x.update(code_size, y, wi, fi, dq, sr, dqsez, state)
                 a2p = a2p + brshift(fa1, 5)
             end
 
-            if bxor(pk0, state.pk[1+1] ) ~= 0 then
-                -- LIMC 
+            if bxor(pk0, state.pk[2] ) ~= 0 then
+                -- LIMC
                 if a2p <= -12160 then
                     a2p = -12288
                 elseif a2p >= 12416 then
@@ -316,36 +312,36 @@ function g72x.update(code_size, y, wi, fi, dq, sr, dqsez, state)
             end
         end
 
-        -- TRIGB & DELAY 
-        state.a[1+1]  = a2p
+        -- TRIGB & DELAY
+        state.a[2]  = a2p
 
-        -- UPA1 
-        -- update predictor pole a[1+0]  
-        state.a[1+0] = state.a[1+0] - brshift(state.a[1+0], 8)
+        -- UPA1
+        -- update predictor pole a[1]
+        state.a[1] = state.a[1] - brshift(state.a[1], 8)
         if dqsez ~= 0 then
             if pks1 == 0 then
-                state.a[1+0] = state.a[1+0] + 192
+                state.a[1] = state.a[1] + 192
             else
-                state.a[1+0] = state.a[1+0] - 192
+                state.a[1] = state.a[1] - 192
             end
         end
 
-        -- LIMD 
+        -- LIMD
         a1ul = 15360 - a2p
-        if state.a[1+0]  < -a1ul then
-            state.a[1+0]  = -a1ul
-        elseif state.a[1+0]  > a1ul then
-            state.a[1+0]  = a1ul
+        if state.a[1]  < -a1ul then
+            state.a[1]  = -a1ul
+        elseif state.a[1]  > a1ul then
+            state.a[1]  = a1ul
         end
 
-        -- UPB : update predictor zeros b[1+6]  
+        -- UPB : update predictor zeros b[6]
         for cnt=1,6 do
-            if code_size == 5 then -- for 40Kbps G.723 
+            if code_size == 5 then -- for 40Kbps G.723
                 state.b[cnt] = state.b[cnt] - brshift(state.b[cnt], 9)
-            else -- for G.721 and 24Kbps G.723 
+            else -- for G.721 and 24Kbps G.723
                 state.b[cnt] = state.b[cnt] - brshift(state.b[cnt], 8)
             end
-            if band(dq, 0x7FFF) ~= 0 then -- XOR 
+            if band(dq, 0x7FFF) ~= 0 then -- XOR
                 if bxor(dq, state.dq[cnt]) >= 0 then
                     state.b[cnt] = state.b[cnt] + 128
                 else
@@ -358,49 +354,49 @@ function g72x.update(code_size, y, wi, fi, dq, sr, dqsez, state)
     for cnt=6,2,-1 do
         state.dq[cnt] = state.dq[cnt - 1]
     end
-    -- FLOAT A : convert dq[1+0]  to 4-bit exp, 6-bit mantissa f.p. 
+    -- FLOAT A : convert dq[1]  to 4-bit exp, 6-bit mantissa f.p.
     if mag == 0 then
-        state.dq[1+0]  = (dq >= 0) and 0x20 or 0xFC20
+        state.dq[1]  = (dq >= 0) and 0x20 or 0xFC20
     else
         exp = quan(mag, power2, 15)
-        state.dq[1+0]  = (dq >= 0) and brshift(exp, 6) + brshift(brshift(mag, 6), exp) or brshift(exp, 6) + brshift(brshift(mag, 6), exp) - 0x400
+        state.dq[1]  = (dq >= 0) and brshift(exp, 6) + brshift(brshift(mag, 6), exp) or brshift(exp, 6) + brshift(brshift(mag, 6), exp) - 0x400
     end
 
-    state.sr[1+1]  = state.sr[1+0] 
-    -- FLOAT B : convert sr to 4-bit exp., 6-bit mantissa f.p. 
+    state.sr[2]  = state.sr[1]
+    -- FLOAT B : convert sr to 4-bit exp., 6-bit mantissa f.p.
     if sr == 0 then
-        state.sr[1+0]  = 0x20
+        state.sr[1]  = 0x20
     elseif sr > 0 then
         exp = quan(sr, power2, 15)
-        state.sr[1+0]  = brshift(exp, 6) + brshift(brshift(sr, 6), exp)
+        state.sr[1]  = brshift(exp, 6) + brshift(brshift(sr, 6), exp)
     elseif sr > -32768 then
         mag = -sr
         exp = quan(mag, power2, 15)
-        state.sr[1+0]  = brshift(exp, 6) + brshift(brshift(mag, 6), exp) - 0x400
+        state.sr[1]  = brshift(exp, 6) + brshift(brshift(mag, 6), exp) - 0x400
     else
-        state.sr[1+0]  = 0xFC20
+        state.sr[1]  = 0xFC20
     end
 
-    -- DELAY A 
-    state.pk[1+1]  = state.pk[1+0] 
-    state.pk[1+0]  = pk0
+    -- DELAY A
+    state.pk[2]  = state.pk[1]
+    state.pk[1]  = pk0
 
-    -- TONE 
-    if tr == 1 then           -- this sample has been treated as data 
-        state.td = 0 -- next one will be treated as voice 
-    elseif a2p < -11776 then -- small sample-to-sample correlation 
-        state.td = 1 -- signal may be data 
-    else                   -- signal is voice 
+    -- TONE
+    if tr == 1 then           -- this sample has been treated as data
+        state.td = 0 -- next one will be treated as voice
+    elseif a2p < -11776 then -- small sample-to-sample correlation
+        state.td = 1 -- signal may be data
+    else                   -- signal is voice
         state.td = 0
     end
 
     -- Adaptation speed control.
-    state.dms = state.dms + brshift(fi - state.dms, 5)          -- FILTA 
-    state.dml = state.dml + brshift(brshift(fi, 2) - state.dml, 7) -- FILTB 
+    state.dms = state.dms + brshift(fi - state.dms, 5)          -- FILTA
+    state.dml = state.dml + brshift(brshift(fi, 2) - state.dml, 7) -- FILTB
 
     if tr == 1 then
         state.ap = 256
-    elseif y < 1536 then -- SUBTC 
+    elseif y < 1536 then -- SUBTC
         state.ap = state.ap + brshift(0x200 - state.ap, 4)
     elseif state.td == 1 then
         state.ap = state.ap + brshift(0x200 - state.ap, 4)
@@ -411,7 +407,6 @@ function g72x.update(code_size, y, wi, fi, dq, sr, dqsez, state)
     end
 end
 
-
 --- tandem_adjust(sr, se, y, i, sign)
 ---
 --- At the end of ADPCM decoding, it simulates an encoder which may be receiving
@@ -421,39 +416,39 @@ end
 ---@param sr integer decoder output linear PCM sample
 ---@param se integer predictor estimate sample
 ---@param y integer quantizer step size
----@param i integer decoder input code 
+---@param i integer decoder input code
 ---@param sign integer sign bit of code i
 ---@param qtab integer[]
 ---@return integer sp adjusted A-law or u-law compressed sample
 function g72x.tandem_adjust_alaw(sr, se, y, i, sign, qtab)
-    local sp -- A-law compressed 8-bit code 
-    local dx -- prediction error 
-    local id -- quantized prediction error 
-    local sd -- adjusted A-law decoded sample value 
-    local im -- biased magnitude of i 
-    local imx -- biased magnitude of id 
+    local sp -- A-law compressed 8-bit code
+    local dx -- prediction error
+    local id -- quantized prediction error
+    local sd -- adjusted A-law decoded sample value
+    local im -- biased magnitude of i
+    local imx -- biased magnitude of id
 
     if sr <= -32768 then
         sr = -1
     end
-    sp = linear2alaw(blshift(brshift(sr, 1), 3)) -- short to A-law compression 
-    dx = brshift(alaw2linear(sp), 2) - se -- 16-bit prediction error 
+    sp = linear2alaw(blshift(brshift(sr, 1), 3)) -- short to A-law compression
+    dx = brshift(alaw2linear(sp), 2) - se -- 16-bit prediction error
     id = quantize(dx, y, qtab, sign - 1)
 
-    if id == i then -- no adjustment on sp 
+    if id == i then -- no adjustment on sp
         return sp
-    else -- sp adjustment needed 
-        -- ADPCM codes : 8, 9, ... F, 0, 1, ... , 6, 7 
-        im = bxor(i, sign) -- 2's complement to biased unsigned 
+    else -- sp adjustment needed
+        -- ADPCM codes : 8, 9, ... F, 0, 1, ... , 6, 7
+        im = bxor(i, sign) -- 2's complement to biased unsigned
         imx = bxor(id, sign)
 
-        if imx > im then -- sp adjusted to next lower value 
+        if imx > im then -- sp adjusted to next lower value
             if band(sp, 0x80) ~= 0 then
                 sd = (sp == 0xD5) and 0x55 or bxor(bxor(sp, 0x55) - 1, 0x55)
             else
                 sd = (sp == 0x2A) and 0x2A or bxor(bxor(sp, 0x55) + 1, 0x55)
             end
-        else -- sp adjusted to next higher value 
+        else -- sp adjusted to next higher value
             if band(sp, 0x80) ~= 0 then
                 sd = (sp == 0xAA) and 0xAA or bxor(bxor(sp, 0x55) + 1, 0x55)
             else
@@ -464,45 +459,40 @@ function g72x.tandem_adjust_alaw(sr, se, y, i, sign, qtab)
     end
 end
 
----@param sr integer
----@param se integer
----@param y integer
----@param i integer
+---@param sr integer decoder output linear PCM sample
+---@param se integer predictor estimate sample
+---@param y integer quantizer step size
+---@param i integer decoder input code
 ---@param sign integer
 ---@param qtab integer[]
-function g72x.tandem_adjust_ulaw(sr, -- decoder output linear PCM sample 
-                       se, -- predictor estimate sample 
-                       y,  -- quantizer step size 
-                       i,  -- decoder input code 
-                       sign,
-                       qtab)
-    local sp -- u-law compressed 8-bit code 
-    local dx         -- prediction error 
-    local id          -- quantized prediction error 
-    local sd           -- adjusted u-law decoded sample value 
-    local im           -- biased magnitude of i 
-    local imx          -- biased magnitude of id 
+function g72x.tandem_adjust_ulaw(sr, se, y, i, sign, qtab)
+    local sp -- u-law compressed 8-bit code
+    local dx -- prediction error
+    local id -- quantized prediction error
+    local sd -- adjusted u-law decoded sample value
+    local im -- biased magnitude of i
+    local imx -- biased magnitude of id
 
     if sr <= -32768 then
         sr = 0
     end
-    sp = linear2ulaw(brshift(sr, 2))        -- short to u-law compression 
-    dx = brshift(ulaw2linear(sp), 2) - se -- 16-bit prediction error 
+    sp = linear2ulaw(brshift(sr, 2))        -- short to u-law compression
+    dx = brshift(ulaw2linear(sp), 2) - se -- 16-bit prediction error
     id = quantize(dx, y, qtab, sign - 1)
     if id == i then
         return sp
     else
-        -- ADPCM codes : 8, 9, ... F, 0, 1, ... , 6, 7 
-        im = bxor(i, sign) -- 2's complement to biased unsigned 
+        -- ADPCM codes : 8, 9, ... F, 0, 1, ... , 6, 7
+        im = bxor(i, sign) -- 2's complement to biased unsigned
         imx = bxor(id, sign)
-        if imx > im then -- sp adjusted to next lower value 
+        if imx > im then -- sp adjusted to next lower value
             if band(sp, 0x80) ~= 0 then
                 sd = (sp == 0xFF) and 0x7E or sp + 1
             else
                 sd = (sp == 0) and 0 or sp - 1
             end
 
-        else -- sp adjusted to next higher value 
+        else -- sp adjusted to next higher value
             if band(sp, 0x80) ~= 0 then
                 sd = (sp == 0x80) and 0x80 or sp - 1
             else
