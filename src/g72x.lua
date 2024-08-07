@@ -29,6 +29,7 @@
  *
  * Common routines for G.721 and G.723 conversions.
 ]]
+local g72x = {}
 
 local abs ,band, bxor, brshift, blshift = math.abs ,bit.band, bit.bxor, bit.brshift or bit.rshift, bit.blshift or bit.lshift
 
@@ -41,14 +42,12 @@ local power2 = {1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 
 --- Using linear search for simple coding.
 ---@param val integer
 ---@param table integer[]
----@param size integer DEPRECATED: the size of the table
+---@param size integer the size of the table
 local function quan(val, table, size)
-    local i = 1
-    while i <= #table do
-        if val < table[i] then break end
-        i = i + 1
+    for i = 1, size do
+        if val < table[i] then return i end
     end
-    return i
+    return size + 1
 end
 
 
@@ -94,7 +93,7 @@ end
 --- pointed to by 'state'.
 --- All the initial state values are specified in the CCITT G.721 document.
 ---@param state g72x_state
-function g72x_init_state(state)
+function g72x.init_state(state)
     state.yl = 34816
     state.yu = 544
     state.dms = 0
@@ -110,7 +109,7 @@ end
 
 --- This routine creates a new `g72x_state` from a table
 --- @return g72x_state
-function g72x_new_state()
+function g72x.new_state()
     local state = {}
     g72x_init_state(state)
     return state
@@ -118,7 +117,7 @@ end
 
 --- computes the estimated signal from 6-zero predictor.
 ---@param state g72x_state
-function predictor_zero(state)
+function g72x.predictor_zero(state)
     local sezi = fmult(brshift(state.b[1+0], 2), state.dq[1+0] )
     for i=2,6 do -- ACCUM 
         sezi = sezi + fmult(brshift(state.b[i], 2), state.dq[i])
@@ -128,14 +127,14 @@ end
 
 --- computes the estimated signal from 2-pole predictor.
 ---@param state g72x_state
-function predictor_pole(state)
+function g72x.predictor_pole(state)
     return fmult(brshift(state.a[1+1], 2), state.sr[1+1] ) +
             fmult(brshift(state.a[1+0], 2), state.sr[1+0] )
 end
 
 --- computes the quantization step size of the adaptive quantizer.
 ---@param state g72x_state
-function step_size(state)
+function g72x.step_size(state)
     if state.ap >= 256 then
         return state.yu
     else
@@ -160,7 +159,7 @@ end
 ---@param y integer Step size multiplier
 ---@param table integer[] quantization table
 ---@param size integer DEPRECATED: table size of short integers
-function quantize(d, y, table, size)
+function g72x.quantize(d, y, table, size)
     local dqm  -- Magnitude of 'd' 
     local exp  -- Integer part of base 2 log of 'd' 
     local mant -- Fractional part of base 2 log 
@@ -205,7 +204,7 @@ end
 ---@param sign integer 0 for non-negative value 
 ---@param dqln integer G.72x codeword
 ---@param y integer Step size multiplier 
-function reconstruct(sign, dqln, y)
+function g72x.reconstruct(sign, dqln, y)
     local dql -- Log of 'dq' magnitude 
     local dex -- Integer part of log 
     local dqt
@@ -232,7 +231,7 @@ end
 ---@param sr integer reconstructed signal
 ---@param dqsez integer difference from 2-pole predictor
 ---@param state g72x_state coder state pointer
-function update(code_size, y, wi, fi, dq, sr, dqsez, state)
+function g72x.update(code_size, y, wi, fi, dq, sr, dqsez, state)
     local mag, exp -- Adaptive predictor, FLOAT A 
     local a2p = 0  -- LIMC 
     local a1ul     -- UPA1 
@@ -426,7 +425,7 @@ end
 ---@param sign integer sign bit of code i
 ---@param qtab integer[]
 ---@return integer sp adjusted A-law or u-law compressed sample
-function tandem_adjust_alaw(sr, se, y, i, sign, qtab)
+function g72x.tandem_adjust_alaw(sr, se, y, i, sign, qtab)
     local sp -- A-law compressed 8-bit code 
     local dx -- prediction error 
     local id -- quantized prediction error 
@@ -471,7 +470,7 @@ end
 ---@param i integer
 ---@param sign integer
 ---@param qtab integer[]
-function tandem_adjust_ulaw(sr, -- decoder output linear PCM sample 
+function g72x.tandem_adjust_ulaw(sr, -- decoder output linear PCM sample 
                        se, -- predictor estimate sample 
                        y,  -- quantizer step size 
                        i,  -- decoder input code 
@@ -513,3 +512,5 @@ function tandem_adjust_ulaw(sr, -- decoder output linear PCM sample
         return sd
     end
 end
+
+return g72x
