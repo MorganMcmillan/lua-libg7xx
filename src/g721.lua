@@ -1,3 +1,4 @@
+local band, bor, bxor, brshift, blshift = bit.band, bit.bor, bit.bxor, bit.brshift or bit.rshift, bit.blshift or bit.lshift
 --[[
  * This source code is a product of Sun Microsystems, Inc. and is provided
  * for unrestricted use.  Users may copy or modify this source code without
@@ -47,7 +48,12 @@
  *
 ]]
 local g721 = {}
+
 local g72x = dofile("g72x.lua")
+
+local AUDIO_ENCODING_ULAW = 1
+local AUDIO_ENCODING_ALAW = 2
+local AUDIO_ENCODING_LINEAR = 3
 
 local qtab_721 = { -124, 80, 178, 246, 300, 349, 400 }
 
@@ -67,7 +73,7 @@ local _fitab = { 0, 0, 0, 0x200, 0x200, 0x200, 0x600, 0xE00, 0xE00, 0x600, 0x200
 ---
 --- Encodes the input vale of linear PCM, A-law or u-law data sl and returns
 --- the resulting code. -1 is returned for unknown input coding value.
-int g721_encoder(int sl, int in_coding, struct g72x_state* state_ptr)
+function g721.encoder(sl, in_coding, state_ptr)
     local sezi, se, sez -- ACCUM 
     local d             -- SUBTA 
     local sr            -- ADDB 
@@ -75,23 +81,20 @@ int g721_encoder(int sl, int in_coding, struct g72x_state* state_ptr)
     local dqsez         -- ADDC 
     local dq, i
 
-    switch (in_coding) { -- linearize input sample to 14-bit PCM 
-    case AUDIO_ENCODING_ALAW:
-        sl = alaw2linear(sl) >> 2
-        break
-    case AUDIO_ENCODING_ULAW:
-        sl = ulaw2linear(sl) >> 2
-        break
-    case AUDIO_ENCODING_LINEAR:
-        sl >>= 2 -- 14-bit dynamic range 
-        break
-    default:
-        return (-1)
-    }
+    -- linearize input sample to 14-bit PCM 
+    if in_coding == AUDIO_ENCODING_ALAW then
+        sl = brshift(alaw2linear(sl), 2)
+    elseif in_coding == AUDIO_ENCODING_ULAW then
+        sl = brshift(ulaw2linear(sl), 2)
+    elseif in_coding == AUDIO_ENCODING_LINEAR then
+        sl = brshift(sl, 2) -- 14-bit dynamic range
+    else
+        return -1
+    end
 
     sezi = predictor_zero(state_ptr)
-    sez = sezi >> 1
-    se = (sezi + predictor_pole(state_ptr)) >> 1 -- estimated signal 
+    sez = brshift(sezi, 1)
+    se = brshift(sezi + predictor_pole(state_ptr), 1) -- estimated signal 
 
     d = sl - se -- estimation difference 
 
@@ -99,15 +102,15 @@ int g721_encoder(int sl, int in_coding, struct g72x_state* state_ptr)
     y = step_size(state_ptr)        -- quantizer step size 
     i = quantize(d, y, qtab_721, 7) -- i = ADPCM code 
 
-    dq = reconstruct(i & 8, _dqlntab[i], y) -- quantized est diff 
+    dq = reconstruct(band(i, 8), _dqlntab[i], y) -- quantized est diff 
 
-    sr = (dq < 0) ? se - (dq & 0x3FFF) : se + dq -- reconst. signal 
+    sr = dq < 0 and se - band(dq, 0x3FFF) or se + dq -- reconst. signal 
 
     dqsez = sr + sez - se -- pole prediction diff. 
 
-    update(4, y, _witab[i] << 5, _fitab[i], dq, sr, dqsez, state_ptr)
+    update(4, y, blshift(_witab[i], 5), _fitab[i], dq, sr, dqsez, state_ptr)
 
-    return (i)
+    return i
 end
 
 
@@ -126,30 +129,29 @@ function g721.decoder(i, out_coding, state_ptr)
     local dq
     local dqsez
 
-    i &= 0x0f -- mask to get proper bits 
+    i = band(i, 0x0f) -- mask to get proper bits 
     sezi = predictor_zero(state_ptr)
-    sez = sezi >> 1
+    sez = brshift(sezi, 1)
     sei = sezi + predictor_pole(state_ptr)
-    se = sei >> 1 -- se = estimated signal 
+    se = brshift(sei, 1) -- se = estimated signal 
 
     y = step_size(state_ptr) -- dynamic quantizer step size 
 
-    dq = reconstruct(i & 0x08, _dqlntab[i], y) -- quantized diff. 
+    dq = reconstruct(band(i, 0x08), _dqlntab[i], y) -- quantized diff. 
 
-    sr = (dq < 0) ? (se - (dq & 0x3FFF)) : se + dq -- reconst. signal 
+    sr = dq < 0 and se - band(dq, 0x3FFF) or se + dq -- reconst. signal 
 
     dqsez = sr - se + sez -- pole prediction diff. 
 
-    update(4, y, _witab[i] << 5, _fitab[i], dq, sr, dqsez, state_ptr)
+    update(4, y, blshift(_witab[i], 5), _fitab[i], dq, sr, dqsez, state_ptr)
 
-    switch (out_coding) {
-    case AUDIO_ENCODING_ALAW:
+    if out_coding == AUDIO_ENCODING_ALAW then
         return tandem_adjust_alaw(sr, se, y, i, 8, qtab_721)
-    case AUDIO_ENCODING_ULAW:
+    elseif out_coding == AUDIO_ENCODING_ULAW then
         return tandem_adjust_ulaw(sr, se, y, i, 8, qtab_721)
-    case AUDIO_ENCODING_LINEAR:
-        return (sr << 2) -- sr was 14-bit dynamic range 
-    default:
+    elseif out_coding == AUDIO_ENCODING_LINEAR then
+        return blshift(sr, 2) -- sr was 14-bit dynamic range 
+    else
         return -1
-    }
+    end
 end
