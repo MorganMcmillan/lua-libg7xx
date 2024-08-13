@@ -78,7 +78,7 @@ local _fitab = { 0, 0, 0, 0x200, 0x200, 0x200, 0x600, 0xE00, 0xE00, 0x600, 0x200
 ---
 --- Encodes the input vale of linear PCM, A-law or u-law data sl and returns
 --- the resulting code. -1 is returned for unknown input coding value.
-function g721.encoder(sl, in_coding, state_ptr)
+function g721.encoder(sl, in_coding, state)
     local sezi, se, sez -- ACCUM 
     local d             -- SUBTA 
     local sr            -- ADDB 
@@ -97,14 +97,14 @@ function g721.encoder(sl, in_coding, state_ptr)
         return -1
     end
 
-    sezi = predictor_zero(state_ptr)
+    sezi = predictor_zero(state)
     sez = brshift(sezi, 1)
-    se = brshift(sezi + predictor_pole(state_ptr), 1) -- estimated signal 
+    se = brshift(sezi + predictor_pole(state), 1) -- estimated signal 
 
     d = sl - se -- estimation difference 
 
     -- quantize the prediction difference 
-    y = step_size(state_ptr)        -- quantizer step size 
+    y = step_size(state)        -- quantizer step size 
     i = quantize(d, y, qtab_721, 7) -- i = ADPCM code 
 
     dq = reconstruct(band(i, 8), _dqlntab[i], y) -- quantized est diff 
@@ -113,7 +113,7 @@ function g721.encoder(sl, in_coding, state_ptr)
 
     dqsez = sr + sez - se -- pole prediction diff. 
 
-    update(4, y, blshift(_witab[i], 5), _fitab[i], dq, sr, dqsez, state_ptr)
+    update(4, y, blshift(_witab[i], 5), _fitab[i], dq, sr, dqsez, state)
 
     return i
 end
@@ -127,7 +127,7 @@ end
 --- returns the resulting linear PCM, A-law or u-law value.
 --- return -1 for unknown out_coding value.
 
-function g721.decoder(i, out_coding, state_ptr)
+function g721.decoder(i, out_coding, state)
     local sezi, sei, sez, se -- ACCUM 
     local y                  -- MIX 
     local sr                 -- ADDB 
@@ -135,12 +135,12 @@ function g721.decoder(i, out_coding, state_ptr)
     local dqsez
 
     i = band(i, 0x0f) -- mask to get proper bits 
-    sezi = predictor_zero(state_ptr)
+    sezi = predictor_zero(state)
     sez = brshift(sezi, 1)
-    sei = sezi + predictor_pole(state_ptr)
+    sei = sezi + predictor_pole(state)
     se = brshift(sei, 1) -- se = estimated signal 
 
-    y = step_size(state_ptr) -- dynamic quantizer step size 
+    y = step_size(state) -- dynamic quantizer step size 
 
     dq = reconstruct(band(i, 0x08), _dqlntab[i], y) -- quantized diff. 
 
@@ -148,7 +148,7 @@ function g721.decoder(i, out_coding, state_ptr)
 
     dqsez = sr - se + sez -- pole prediction diff. 
 
-    update(4, y, blshift(_witab[i], 5), _fitab[i], dq, sr, dqsez, state_ptr)
+    update(4, y, blshift(_witab[i], 5), _fitab[i], dq, sr, dqsez, state)
 
     if out_coding == AUDIO_ENCODING_ALAW then
         return tandem_adjust_alaw(sr, se, y, i, 8, qtab_721)
