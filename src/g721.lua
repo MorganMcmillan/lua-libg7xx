@@ -1,4 +1,5 @@
 local band, bor, bxor, brshift, blshift = bit.band, bit.bor, bit.bxor, bit.brshift or bit.rshift, bit.blshift or bit.lshift
+
 --[[
  * This source code is a product of Sun Microsystems, Inc. and is provided
  * for unrestricted use.  Users may copy or modify this source code without
@@ -49,7 +50,11 @@ local band, bor, bxor, brshift, blshift = bit.band, bit.bor, bit.bxor, bit.brshi
 ]]
 local g721 = {}
 
-local g72x = dofile("g72x.lua")
+local g72x = require("g72x.lua")
+local predictor_zero, predictor_pole, step_size, reconstruct, quantize, update, tandem_adjust_alaw, tandem_adjust_ulaw  = g72x.predictor_zero, g72x.predictor_pole, g72x.step_size, g72x.reconstruct, g72x.quantize, g72x.update, g72x.tandem_adjust_alaw, g72x.tandem_adjust_ulaw
+
+local g711 = require("g711")
+local alaw2linear, ulaw2linear = g711.alaw2linear, g711.ulaw2linear
 
 local AUDIO_ENCODING_ULAW = 1
 local AUDIO_ENCODING_ALAW = 2

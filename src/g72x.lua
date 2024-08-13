@@ -31,7 +31,7 @@
 ]]
 local g72x = {}
 
-local g711 = dofile("g711")
+local g711 = require("g711")
 local linear2alaw, alaw2linear, linear2ulaw, ulaw2linear = g711.linear2alaw, g711.alaw2linear, g711.linear2ulaw, g711.ulaw2linear
 
 local abs ,band, bxor, brshift, blshift = math.abs ,bit.band, bit.bxor, bit.brshift or bit.rshift, bit.blshift or bit.lshift
