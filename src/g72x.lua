@@ -31,6 +31,9 @@
 ]]
 local g72x = {}
 
+local g711 = require("g711")
+local linear2alaw, alaw2linear, linear2ulaw, ulaw2linear = g711.linear2alaw, g711.alaw2linear, g711.linear2ulaw, g711.ulaw2linear
+
 local abs ,band, bxor, brshift, blshift = math.abs ,bit.band, bit.bxor, bit.brshift or bit.rshift, bit.blshift or bit.lshift
 
 local power2 = {1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000}

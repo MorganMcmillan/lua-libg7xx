@@ -33,7 +33,6 @@ local band, bor, bxor, brshift, blshift = bit.band, bit.bor, bit.bxor, bit.brshi
 ]]
 local g711 = {}
 
-
 local SIGN_BIT = 0x80  -- Sign bit for a A-law byte. 
 local QUANT_MASK = 0xf -- Number of A-law segments. 
 local SEG_SHIFT = 4    -- Left shift for segment number. 
@@ -204,7 +203,6 @@ function g711.linear2ulaw(pcm_val) ---
         return bxor(uval, mask)
     end
 end
-
 
 --- ulaw2linear() - Convert a u-law value to 16-bit linear PCM
 ---
