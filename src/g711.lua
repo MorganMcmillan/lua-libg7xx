@@ -1,3 +1,5 @@
+local band, bor, bxor, brshift, blshift = bit.band, bit.bor, bit.bxor, bit.brshift or bit.rshift, bit.blshift or bit.lshift
+
 --[[
  * This source code is a product of Sun Microsystems, Inc. and is provided
  * for unrestricted use.  Users may copy or modify this source code without
@@ -29,17 +31,20 @@
  *
  * u-law, A-law and linear PCM conversions.
 ]]
+local g711 = {}
+
+
 local SIGN_BIT = 0x80  -- Sign bit for a A-law byte. 
-local QUANT_MASK = 0xf        -- Number of A-law segments. 
+local QUANT_MASK = 0xf -- Number of A-law segments. 
 local SEG_SHIFT = 4    -- Left shift for segment number. 
 local SEG_MASK = 0x70  -- Segment field mask. 
 
-local seg_end = { 0xFF, 0x1FF, 0x3FF, 0x7FF, 0xFFF, 0x1FFF, 0x3FFF, 0x7FFF };
+local seg_end = { 0xFF, 0x1FF, 0x3FF, 0x7FF, 0xFFF, 0x1FFF, 0x3FFF, 0x7FFF }
 
 -- copy from CCITT G.711 specifications
 
 -- u- to A-law conversions
-local _u2a = { 
+local _u2a = {
                             1,   1,   2,   2,   3,   3,   4,   4,   5,   5,   6,   6,
                             7,   7,   8,   8,   9,   10,  11,  12,  13,  14,  15,  16,
                             17,  18,  19,  20,  21,  22,  23,  24,  25,  27,  29,  31,
@@ -53,7 +58,7 @@ local _u2a = {
                             121, 122, 123, 124, 125, 126, 127, 128
 }
 -- A- to u-law conversions
-local _a2u = { 
+local _a2u = {
                             1,   3,   5,   7,   9,   11,  13,  15,  16,  17,  18,  19,
                             20,  21,  22,  23,  24,  25,  26,  27,  28,  29,  30,  31,
                             32,  32,  33,  33,  34,  34,  35,  35,  36,  37,  38,  39,
@@ -67,153 +72,138 @@ local _a2u = {
                             120, 121, 122, 123, 124, 125, 126, 127
 }
 
-static int search(int val, short* table, int size)
-{
-    int i;
+local function search (val, table, size)
+    for i=1,size do
+        if val <= table[i] then return i end
+    end
+    return size + 1
+end
 
-    for (i = 0; i < size; i++) {
-        if (val <= *table++)
-            return (i);
-    }
-    return (size);
-}
+-- linear2alaw() - Convert a 16-bit linear PCM value to 8-bit A-law
+--
+-- linear2alaw() accepts an 16-bit integer and encodes it as A-law data.
+--
+--		Linear Input Code	Compressed Code
+--	------------------------	---------------
+--	0000000wxyza			000wxyz
+--	0000001wxyza			001wxyz
+--	000001wxyzab			010wxyz
+--	00001wxyzabc			011wxyz
+--	0001wxyzabcd			100wxyz
+--	001wxyzabcde			101wxyz
+--	01wxyzabcdef			110wxyz
+--	1wxyzabcdefg			111wxyz
+--
+-- For further information see John C. Bellamy's Digital Telephony, 1982,
+-- John Wiley & Sons, pps 98-111 and 472-476.
+---@param pcm_val integer 2's complement (16-bit range)
+---@return number
+function g711.linear2alaw(pcm_val)
+    local mask
 
-/*
- * linear2alaw() - Convert a 16-bit linear PCM value to 8-bit A-law
- *
- * linear2alaw() accepts an 16-bit integer and encodes it as A-law data.
- *
- *		Linear Input Code	Compressed Code
- *	------------------------	---------------
- *	0000000wxyza			000wxyz
- *	0000001wxyza			001wxyz
- *	000001wxyzab			010wxyz
- *	00001wxyzabc			011wxyz
- *	0001wxyzabcd			100wxyz
- *	001wxyzabcde			101wxyz
- *	01wxyzabcdef			110wxyz
- *	1wxyzabcdefg			111wxyz
- *
- * For further information see John C. Bellamy's Digital Telephony, 1982,
- * John Wiley & Sons, pps 98-111 and 472-476.
- */
-unsigned char linear2alaw(int pcm_val) -- 2's complement (16-bit range) 
-{
-    int mask;
-    int seg;
-    unsigned char aval;
-
-    if (pcm_val >= 0) {
-        mask = 0xD5; -- sign (7th) bit = 1 
-    } else {
-        mask = 0x55; -- sign bit = 0 
-        pcm_val = -pcm_val - 8;
-    }
+    if pcm_val >= 0 then
+        mask = 0xD5 -- sign (7th) bit = 1 
+    else
+        mask = 0x55 -- sign bit = 0 
+        pcm_val = -pcm_val - 8
+    end
 
     -- Convert the scaled magnitude to segment number. 
-    seg = search(pcm_val, seg_end, 8);
+    local seg = search(pcm_val, seg_end, 8)
 
     -- Combine the sign, segment, and quantization bits. 
 
-    if (seg >= 8) -- out of range, return maximum value. 
-        return (0x7F ^ mask);
-    else {
-        aval = seg << SEG_SHIFT;
-        if (seg < 2)
-            aval |= (pcm_val >> 4) & QUANT_MASK;
+    if seg > 8 then -- out of range, return maximum value. 
+        return bxor(0x7F, mask)
+    else
+        local aval = blshift(seg, SEG_SHIFT)
+        if seg < 2 then
+            aval = bor(aval, brshift(pcm_val, 4) & QUANT_MASK)
         else
-            aval |= (pcm_val >> (seg + 3)) & QUANT_MASK;
-        return (aval ^ mask);
-    }
-}
+            aval = bor(aval, band(brshift(pcm_val, seg + 3), QUANT_MASK))
+        end
+        return bxor(aval, mask)
+    end
+end
 
-/*
- * alaw2linear() - Convert an A-law value to 16-bit linear PCM
- *
- */
-int alaw2linear(unsigned char a_val)
-{
-    int t;
-    int seg;
+--- alaw2linear() - Convert an A-law value to 16-bit linear PCM
+---
+---@param a_val integer
+function g711.alaw2linear(a_val)
+    a_val = bxor(a_val, 0x55)
 
-    a_val ^= 0x55;
+    local t = brshift(band(a_val, QUANT_MASK), 4)
+    local seg = blshift(band(a_val, SEG_MASK), SEG_SHIFT)
 
-    t = (a_val & QUANT_MASK) << 4;
-    seg = ((unsigned)a_val & SEG_MASK) >> SEG_SHIFT;
-    switch (seg) {
-    case 0:
-        t += 8;
-        break;
-    case 1:
-        t += 0x108;
-        break;
-    default:
-        t += 0x108;
-        t <<= seg - 1;
-    }
-    return ((a_val & SIGN_BIT) ? t : -t);
-}
+    if seg == 0 then
+        t = t + 8
+    elseif seg == 1 then
+        t = t + 0x108
+    else
+        t = t + 0x108
+        t = blshift(t, seg - 1)
+    end
+
+    return band(a_val, SIGN_BIT) ~= 0 and t or -t
+end
 
 local BIAS = 0x84 -- Bias for linear code. 
 
-/*
- * linear2ulaw() - Convert a linear PCM value to u-law
- *
- * In order to simplify the encoding process, the original linear magnitude
- * is biased by adding 33 which shifts the encoding range from (0 - 8158) to
- * (33 - 8191). The result can be seen in the following encoding table:
- *
- *	Biased Linear Input Code	Compressed Code
- *	------------------------	---------------
- *	00000001wxyza			000wxyz
- *	0000001wxyzab			001wxyz
- *	000001wxyzabc			010wxyz
- *	00001wxyzabcd			011wxyz
- *	0001wxyzabcde			100wxyz
- *	001wxyzabcdef			101wxyz
- *	01wxyzabcdefg			110wxyz
- *	1wxyzabcdefgh			111wxyz
- *
- * Each biased linear code has a leading 1 which identifies the segment
- * number. The value of the segment number is equal to 7 minus the number
- * of leading 0's. The quantization interval is directly available as the
- * four bits wxyz.  * The trailing bits (a - h) are ignored.
- *
- * Ordinarily the complement of the resulting code word is used for
- * transmission, and so the code word is complemented before it is returned.
- *
- * For further information see John C. Bellamy's Digital Telephony, 1982,
- * John Wiley & Sons, pps 98-111 and 472-476.
- */
-unsigned char linear2ulaw(int pcm_val) /* 2's complement (16-bit range) */
-{
-    int mask;
-    int seg;
-    unsigned char uval;
+-- linear2ulaw() - Convert a linear PCM value to u-law
+--
+-- In order to simplify the encoding process, the original linear magnitude
+-- is biased by adding 33 which shifts the encoding range from (0 - 8158) to
+-- (33 - 8191). The result can be seen in the following encoding table:
+--
+--	Biased Linear Input Code	Compressed Code
+--	------------------------	---------------
+--	00000001wxyza			000wxyz
+--	0000001wxyzab			001wxyz
+--	000001wxyzabc			010wxyz
+--	00001wxyzabcd			011wxyz
+--	0001wxyzabcde			100wxyz
+--	001wxyzabcdef			101wxyz
+--	01wxyzabcdefg			110wxyz
+--	1wxyzabcdefgh			111wxyz
+--
+-- Each biased linear code has a leading 1 which identifies the segment
+-- number. The value of the segment number is equal to 7 minus the number
+-- of leading 0's. The quantization interval is directly available as the
+-- four bits wxyz.  * The trailing bits (a - h) are ignored.
+--
+-- Ordinarily the complement of the resulting code word is used for
+-- transmission, and so the code word is complemented before it is returned.
+--
+-- For further information see John C. Bellamy's Digital Telephony, 1982,
+-- John Wiley & Sons, pps 98-111 and 472-476.
 
-    /* Get the sign and the magnitude of the value. */
-    if (pcm_val < 0) {
-        pcm_val = BIAS - pcm_val;
-        mask = 0x7F;
-    } else {
-        pcm_val += BIAS;
-        mask = 0xFF;
-    }
+---@param pcm_val integer 2's complement (16-bit range) 
+---@return integer
+function g711.linear2ulaw(pcm_val) --- 
+    local mask
+    local uval
 
-    /* Convert the scaled magnitude to segment number. */
-    seg = search(pcm_val, seg_end, 8);
+    -- Get the sign and the magnitude of the value. 
+    if pcm_val < 0 then
+        pcm_val = BIAS - pcm_val
+        mask = 0x7F
+    else
+        pcm_val = pcm_val + BIAS
+        mask = 0xFF
+    end
 
-    /*
-     * Combine the sign, segment, quantization bits;
-     * and complement the code word.
-     */
-    if (seg >= 8) /* out of range, return maximum value. */
-        return (0x7F ^ mask);
-    else {
-        uval = (seg << 4) | ((pcm_val >> (seg + 3)) & 0xF);
-        return (uval ^ mask);
-    }
-}
+    -- Convert the scaled magnitude to segment number. 
+    local seg = search(pcm_val, seg_end, 8)
+
+    -- Combine the sign, segment, quantization bits
+    -- and complement the code word.
+    if seg > 8 then -- out of range, return maximum value.
+        return bxor(0x7F, mask)
+    else
+        uval = bor(blshift(seg, 4), band(brshift(pcm_val, (seg + 3)), 0xF))
+        return bxor(uval, mask)
+    end
+end
 
 
 --- ulaw2linear() - Convert a u-law value to 16-bit linear PCM
@@ -223,32 +213,29 @@ unsigned char linear2ulaw(int pcm_val) /* 2's complement (16-bit range) */
 ---
 --- Note that this function expects to be passed the complement of the
 --- original code word. This is in keeping with ISDN conventions.
-int ulaw2linear(unsigned char u_val)
-{
-    int t;
-
+---@param u_val integer 8-bit u-law
+function g711.ulaw2linear(u_val)
     --- Complement to obtain normal u-law value.
-    u_val = ~u_val;
+    u_val = bxor(u_val, 0xFF)
 
     --- Extract and bias the quantization bits. Then
     --- shift up by the segment number and subtract out the bias.
-    t = ((u_val & QUANT_MASK) << 3) + BIAS;
-    t <<= ((unsigned)u_val & SEG_MASK) >> SEG_SHIFT;
+    local t = blshift(band(u_val, QUANT_MASK), 3) + BIAS
+    t = blshift(t,(blshift(band(u_val, SEG_MASK), SEG_SHIFT)))
 
-    return ((u_val & SIGN_BIT) ~= 0 and (BIAS - t) or (t - BIAS));
-}
+    return band(u_val, SIGN_BIT) ~= 0 and (BIAS - t) or (t - BIAS)
+end
 
-/* A-law to u-law conversion */
-unsigned char alaw2ulaw(unsigned char aval)
-{
-    aval &= 0xff;
-    return ((aval & 0x80) ? (0xFF ^ _a2u[aval ^ 0xD5]) : (0x7F ^ _a2u[aval ^ 0x55]));
-}
+--- A-law to u-law conversion 
+function g711.alaw2ulaw(aval)
+    aval = band(aval, 0xff)
+    return band(aval, 0x80) ~= 0 and bxor(0xFF, _a2u[bxor(aval, 0xD5)]) or bxor(0x7F, _a2u[bxor(aval, 0x55)])
+end
 
-/* u-law to A-law conversion */
-unsigned char ulaw2alaw(unsigned char uval)
-{
-    uval &= 0xff;
-    return ((uval & 0x80) ? (0xD5 ^ (_u2a[0xFF ^ uval] - 1))
-                          : (0x55 ^ (_u2a[0x7F ^ uval] - 1)));
-}
+--- u-law to A-law conversion 
+function g711.ulaw2alaw(uval)
+    uval = band(uval, 0xFF)
+    return band(uval, 0x80) ~= 0 and bxor(0xD5, (_u2a[bxor(0xFF, uval)] - 1)) or bxor(0x55, (_u2a[bxor(0x7F, uval)] - 1))
+end
+
+return g711

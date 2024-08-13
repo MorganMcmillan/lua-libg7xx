@@ -1,24 +1,25 @@
-/*
+--[[
  * decode.c
  *
  * CCITT ADPCM decoder
  *
  * Usage : decode [-3|4|5] [-a|u|l] < infile > outfile
  */
-#ifndef ARDUINO
-#include "g72x.h"
-#include <stdio.h>
-#include <stdlib.h>
+]]
+local g72x = require("g72x")
 
 
 /*
  * Unpack input codes and pass them back as bytes.
  * Returns 1 if there is residual input, returns -1 if eof, else returns 0.
  */
-int unpack_input(unsigned char* code, int bits)
-{
+local function unpack_input(code,bits)
     static unsigned int in_buffer = 0;
+    local in_buffer
+    in_buffer = in_buffer or 0
     static int in_bits = 0;
+    local in_bits
+    in_bits = in_bits or 0
     unsigned char in_byte;
 
     if (in_bits < bits) {
@@ -33,7 +34,7 @@ int unpack_input(unsigned char* code, int bits)
     in_buffer >>= bits;
     in_bits -= bits;
     return (in_bits > 0);
-}
+end
 
 
 int main(int argc, char** argv)

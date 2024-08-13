@@ -407,6 +407,8 @@ function g72x.update(code_size, y, wi, fi, dq, sr, dqsez, state)
     end
 end
 
+
+
 --- tandem_adjust(sr, se, y, i, sign)
 ---
 --- At the end of ADPCM decoding, it simulates an encoder which may be receiving
