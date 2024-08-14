@@ -1,3 +1,8 @@
+local abs ,band, bxor = math.abs ,bit.band, bit.bxor
+
+local bitutil = require("bitutil")
+local blshift, brshift = bitutil.blshift, bitutil.brshift
+
 --[[
  * This source code is a product of Sun Microsystems, Inc. and is provided
  * for unrestricted use.  Users may copy or modify this source code without
@@ -34,10 +39,7 @@ local g72x = {}
 local g711 = require("g711")
 local linear2alaw, alaw2linear, linear2ulaw, ulaw2linear = g711.linear2alaw, g711.alaw2linear, g711.linear2ulaw, g711.ulaw2linear
 
-local abs ,band, bxor, brshift, blshift = math.abs ,bit.band, bit.bxor, bit.brshift or bit.rshift, bit.blshift or bit.lshift
-
 local power2 = {1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000}
-
 
 --- quantizes the input val against the table of size short integers.
 --- It returns i if table[i - 1] <= val < table[i].

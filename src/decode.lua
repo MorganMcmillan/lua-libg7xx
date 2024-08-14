@@ -1,5 +1,8 @@
-local band, bor, brshift, blshift = bit.band, bit.bor, bit.brshift or bit.rshift, bit.blshift or bit.lshift
+local band, bor = bit.band, bit.bor
 local pack = string.pack
+
+local bitutil = require("bitutil")
+local blshift, brshift = bitutil.blshift, bitutil.brshift
 
 --[[
  * decode.c
@@ -111,7 +114,7 @@ local function main(args)
 
     -- Read and unpack input codes and process them
     while unpack_input(code, dec_bits, in_file) do
-        local sample = dec_routine(code, out_coding, state)
+        local sample = dec_routine(code[1], out_coding, state)
         if out_size == 2 then
             out_file:write(pack("h", sample))
         else

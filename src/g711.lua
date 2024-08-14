@@ -1,4 +1,7 @@
-local band, bor, bxor, brshift, blshift = bit.band, bit.bor, bit.bxor, bit.brshift or bit.rshift, bit.blshift or bit.lshift
+local band, bor, bxor = bit.band, bit.bor, bit.bxor
+
+local bitutil = require("bitutil")
+local blshift, brshift = bitutil.blshift, bitutil.brshift
 
 --[[
  * This source code is a product of Sun Microsystems, Inc. and is provided
