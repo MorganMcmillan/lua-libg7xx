@@ -1,4 +1,4 @@
-local band, bor, bxor, brshift, blshift = bit.band, bit.bor, bit.bxor, bit.brshift or bit.rshift, bit.blshift or bit.lshift
+local band, brshift, blshift = bit.band, bit.brshift or bit.rshift, bit.blshift or bit.lshift
 
 --[[
  * This source code is a product of Sun Microsystems, Inc. and is provided
@@ -76,8 +76,12 @@ local _fitab = { 0, 0, 0, 0x200, 0x200, 0x200, 0x600, 0xE00, 0xE00, 0x600, 0x200
 
 --- g721_encoder()
 ---
---- Encodes the input vale of linear PCM, A-law or u-law data sl and returns
+--- Encodes the input value of linear PCM, A-law or u-law data sl and returns
 --- the resulting code. -1 is returned for unknown input coding value.
+---@param sl integer input sample
+---@param in_coding 1|2|3 the encoding to use
+---@param state g72x_state
+---@return integer code
 function g721.encoder(sl, in_coding, state)
     local sezi, se, sez -- ACCUM 
     local d             -- SUBTA 
@@ -126,7 +130,10 @@ end
 --- Decodes a 4-bit code of G.721 encoded data of i and
 --- returns the resulting linear PCM, A-law or u-law value.
 --- return -1 for unknown out_coding value.
-
+---@param i integer the encoded value
+---@param out_coding 1|2|3 the encoding to use
+---@param state g72x_state
+---@return integer sl the decoded value, or -1 for unknown out_coding value
 function g721.decoder(i, out_coding, state)
     local sezi, sei, sez, se -- ACCUM 
     local y                  -- MIX 
@@ -160,3 +167,5 @@ function g721.decoder(i, out_coding, state)
         return -1
     end
 end
+
+return g721

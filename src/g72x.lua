@@ -46,6 +46,7 @@ local power2 = {1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 
 ---@param val integer
 ---@param table integer[]
 ---@param size integer the size of the table
+---@return integer index the quantization index, or size + 1 if not found
 local function quan(val, table, size)
     for i = 1, size do
         if val < table[i] then return i end
@@ -94,7 +95,7 @@ end
 --- pointed to by 'state'.
 --- All the initial state values are specified in the CCITT G.721 document.
 ---@param state g72x_state
-local function g72x_init_state(state)
+function g72x.init_state(state)
     state.yl = 34816
     state.yu = 544
     state.dms = 0
@@ -108,18 +109,9 @@ local function g72x_init_state(state)
     state.td = 0
 end
 
-g72x.init_state = g72x_init_state
-
---- This routine creates a new `g72x_state` from a table
---- @return g72x_state
-function g72x.new_state()
-    local state = {}
-    g72x_init_state(state)
-    return state
-end
-
 --- computes the estimated signal from 6-zero predictor.
 ---@param state g72x_state
+---@return integer sezi the estimated signal
 function g72x.predictor_zero(state)
     local sezi = fmult(brshift(state.b[1], 2), state.dq[1] )
     for i=2,6 do -- ACCUM
@@ -130,6 +122,7 @@ end
 
 --- computes the estimated signal from 2-pole predictor.
 ---@param state g72x_state
+---@return integer sezi the estimated signal
 function g72x.predictor_pole(state)
     return fmult(brshift(state.a[2], 2), state.sr[2] ) +
             fmult(brshift(state.a[1], 2), state.sr[1] )
@@ -137,6 +130,7 @@ end
 
 --- computes the quantization step size of the adaptive quantizer.
 ---@param state g72x_state
+---@return integer step_size the quantization step size
 function g72x.step_size(state)
     if state.ap >= 256 then
         return state.yu
@@ -162,6 +156,7 @@ end
 ---@param y integer Step size multiplier
 ---@param table integer[] quantization table
 ---@param size integer DEPRECATED: table size of short integers
+---@return integer codeword the ADPCM codeword
 local function quantize(d, y, table, size)
     local dqm  -- Magnitude of 'd'
     local exp  -- Integer part of base 2 log of 'd'
@@ -206,6 +201,7 @@ g72x.quantize = quantize
 ---@param sign integer 0 for non-negative value
 ---@param dqln integer G.72x codeword
 ---@param y integer Step size multiplier
+---@return integer dq the reconstructed difference signal
 function g72x.reconstruct(sign, dqln, y)
     local dql -- Log of 'dq' magnitude
     local dex -- Integer part of log
@@ -470,6 +466,7 @@ end
 ---@param i integer decoder input code
 ---@param sign integer
 ---@param qtab integer[]
+---@return integer sp adjusted u-law compressed sample
 function g72x.tandem_adjust_ulaw(sr, se, y, i, sign, qtab)
     local sp -- u-law compressed 8-bit code
     local dx -- prediction error

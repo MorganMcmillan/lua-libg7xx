@@ -67,6 +67,9 @@ local qtab_723_24 = { 8, 218, 331 }
 ---
 --- Encodes a linear PCM, A-law or u-law input sample and returns its 3-bit code.
 --- Returns -1 if invalid input coding value.
+---@param sl integer input sample
+---@param in_coding 1|2|3 the encoding to use
+---@param state g72x_state
 function g723_24.encoder(sl, in_coding, state)
     local sei, sezi, se, sez; -- ACCUM 
     local d;                  -- SUBTA 
@@ -112,6 +115,10 @@ end
 --- Decodes a 3-bit CCITT G.723_24 ADPCM code and returns
 --- the resulting 16-bit linear PCM, A-law or u-law sample value.
 --- -1 is returned if the output coding is unknown.
+---@param i integer
+---@param out_coding 1|2|3 the encoding to use
+---@param state g72x_state
+---@return integer the decoded sample
 function g723_24.decoder(i, out_coding, state)
     local sezi, sei, sez, se; -- ACCUM 
     local y;                  -- MIX 

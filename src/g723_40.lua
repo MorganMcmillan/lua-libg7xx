@@ -76,6 +76,9 @@ local qtab_723_40 = { -122, -16, 68, 139, 198, 250, 298, 339, 378, 413, 445, 475
 --- Encodes a 16-bit linear PCM, A-law or u-law input sample and retuens
 --- the resulting 5-bit CCITT G.723 40Kbps code.
 --- Returns -1 if the input coding value is invalid.
+---@param sl integer input sample
+---@param in_coding 1|2|3 the encoding to use
+---@param state g72x_state
 function g723_40.encoder(sl, in_coding, state)
     local sei, sezi, se, sez -- ACCUM 
     local d                  -- SUBTA 
@@ -122,6 +125,10 @@ end
 --- Decodes a 5-bit CCITT G.723 40Kbps code and returns
 --- the resulting 16-bit linear PCM, A-law or u-law sample value.
 --- -1 is returned if the output coding is unknown.
+---@param i integer the encoded sample
+---@param out_coding 1|2|3 the encoding to use
+---@param state g72x_state
+---@return integer the decoded sample
 function g723_40.decoder(i, out_coding, state)
     local sezi, sei, sez, se -- ACCUM 
     local y                  -- MIX 

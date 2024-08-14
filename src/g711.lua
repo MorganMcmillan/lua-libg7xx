@@ -71,7 +71,12 @@ local _a2u = {
                             120, 121, 122, 123, 124, 125, 126, 127
 }
 
-local function search (val, table, size)
+--- linear searches for an element in a table that is less than or equal to `val`
+---@param val integer
+---@param table integer[]
+---@param size integer
+---@return integer index the index of the element in the table, or size + 1 if not found
+local function search(val, table, size)
     for i=1,size do
         if val <= table[i] then return i end
     end
@@ -96,7 +101,7 @@ end
 -- For further information see John C. Bellamy's Digital Telephony, 1982,
 -- John Wiley & Sons, pps 98-111 and 472-476.
 ---@param pcm_val integer 2's complement (16-bit range)
----@return number
+---@return number alaw_val 8-bit value
 function g711.linear2alaw(pcm_val)
     local mask
 
@@ -127,7 +132,8 @@ end
 
 --- alaw2linear() - Convert an A-law value to 16-bit linear PCM
 ---
----@param a_val integer
+---@param a_val integer 8-bit value
+---@return integer pcm_val 2's complement (16-bit range)
 function g711.alaw2linear(a_val)
     a_val = bxor(a_val, 0x55)
 
@@ -177,8 +183,8 @@ local BIAS = 0x84 -- Bias for linear code.
 -- John Wiley & Sons, pps 98-111 and 472-476.
 
 ---@param pcm_val integer 2's complement (16-bit range) 
----@return integer
-function g711.linear2ulaw(pcm_val) --- 
+---@return integer ulaw_val 8-bit value
+function g711.linear2ulaw(pcm_val)
     local mask
     local uval
 
@@ -212,6 +218,7 @@ end
 --- Note that this function expects to be passed the complement of the
 --- original code word. This is in keeping with ISDN conventions.
 ---@param u_val integer 8-bit u-law
+---@return integer pcm_val 2's complement (16-bit range)
 function g711.ulaw2linear(u_val)
     --- Complement to obtain normal u-law value.
     u_val = bxor(u_val, 0xFF)
@@ -224,13 +231,17 @@ function g711.ulaw2linear(u_val)
     return band(u_val, SIGN_BIT) ~= 0 and (BIAS - t) or (t - BIAS)
 end
 
---- A-law to u-law conversion 
+--- A-law to u-law conversion
+---@param aval integer 8-bit A-law
+---@return integer uval 8-bit u-law
 function g711.alaw2ulaw(aval)
     aval = band(aval, 0xff)
     return band(aval, 0x80) ~= 0 and bxor(0xFF, _a2u[bxor(aval, 0xD5)]) or bxor(0x7F, _a2u[bxor(aval, 0x55)])
 end
 
---- u-law to A-law conversion 
+--- u-law to A-law conversion
+---@param uval integer 8-bit u-law
+---@return integer aval 8-bit A-law
 function g711.ulaw2alaw(uval)
     uval = band(uval, 0xFF)
     return band(uval, 0x80) ~= 0 and bxor(0xD5, (_u2a[bxor(0xFF, uval)] - 1)) or bxor(0x55, (_u2a[bxor(0x7F, uval)] - 1))
