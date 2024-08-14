@@ -7,7 +7,6 @@ local pack = string.pack
  * CCITT ADPCM decoder
  *
  * Usage : decode [-3|4|5] [-a|u|l] < infile > outfile
- */
 ]]
 
 local g72x = require("g72x")
